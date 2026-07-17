@@ -6,7 +6,7 @@ CURRENT_BRANCH := $(shell git branch --show-current)
 # Build binary path
 BUILD_PATH := ./packages/opencode/dist/opencode-darwin-arm64/bin/opencode
 
-.PHONY: all build install-bun sync clean test deps
+.PHONY: all build install-bun sync clean test deps push
 
 # Default target
 all: build
@@ -53,3 +53,12 @@ sync:
 	git push origin dev
 	git checkout $(CURRENT_BRANCH)
 	git merge dev
+
+# Push the current custom branch to origin (your fork)
+push:
+	@if [ -z "$(CURRENT_BRANCH)" ] || [ "$(CURRENT_BRANCH)" = "dev" ]; then \
+		echo "Error: Cannot push 'dev' branch directly or from a detached HEAD."; \
+		exit 1; \
+	fi
+	git push -u origin $(CURRENT_BRANCH)
+

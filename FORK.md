@@ -30,9 +30,18 @@ git remote add upstream https://github.com/anomalyco/opencode.git
    git merge dev
    ```
 
+## Pushing Changes
+
+Push your custom branch to your fork (`origin`):
+
+```bash
+git push -u origin <your-custom-branch>
+```
+
 ---
 > [!TIP]
-> Use `make sync` to automate this workflow.
+> - Use `make sync` to automate the sync workflow.
+> - Use `make push` to push the current custom branch to your fork.
 
 ## Changelog
 
@@ -40,4 +49,5 @@ git remote add upstream https://github.com/anomalyco/opencode.git
 
 - **Added [FORK.md](file:///Users/mmcdonnell/code/opencode/FORK.md):** Outlines branching, syncing, and custom workspace strategy.
 - **Added [Makefile](file:///Users/mmcdonnell/code/opencode/Makefile):** Standard checkmake-compliant targets for building, cleaning, testing, and syncing with automatic Bun dependency management.
+- **Updated [Makefile](file:///Users/mmcdonnell/code/opencode/Makefile):** Added `push` target to automate pushing the active custom branch to your fork.
 - **Updated `alias.zsh`:** Mapped global `oc` alias to local compiled standalone binary via `$HOME`.
