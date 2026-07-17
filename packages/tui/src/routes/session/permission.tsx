@@ -1,7 +1,7 @@
 import { createStore } from "solid-js/store"
 import { dirname } from "node:path"
 import { createMemo, For, Match, Show, Switch } from "solid-js"
-import { Portal, useRenderer, useTerminalDimensions, type JSX } from "@opentui/solid"
+import { Portal, useRenderer, useTerminalDimensions, useKeyboard, type JSX } from "@opentui/solid"
 import type { TextareaRenderable } from "@opentui/core"
 import { useTheme, selectedForeground } from "../../context/theme"
 import type { PermissionRequest } from "@opencode-ai/sdk/v2"
@@ -16,8 +16,25 @@ import { getScrollAcceleration } from "../../util/scroll"
 import { useTuiConfig } from "../../config"
 import { OPENCODE_BASE_MODE, useBindings, useCommandShortcut } from "../../keymap"
 import { usePathFormatter } from "../../context/path-format"
+import { useDialog } from "../../ui/dialog"
 
 type PermissionStage = "permission" | "always" | "reject"
+
+interface FileEntry {
+  relativePath: string
+  patch: string
+  filePath: string
+  type: string
+  additions: number
+  deletions: number
+}
+
+function fileTitle(file?: FileEntry) {
+  if (!file) return ""
+  if (file.type === "delete") return "Deleted " + file.relativePath
+  if (file.type === "add") return "Created " + file.relativePath
+  return "Patched " + file.relativePath
+}
 
 function EditBody(props: { request: PermissionRequest }) {
   const themeState = useTheme()
@@ -25,12 +42,25 @@ function EditBody(props: { request: PermissionRequest }) {
   const syntax = themeState.syntax
   const config = useTuiConfig()
   const dimensions = useTerminalDimensions()
+  const dialog = useDialog()
+
+  const files = createMemo(() => {
+    const raw = props.request.metadata?.files
+    return Array.isArray(raw) ? (raw as FileEntry[]) : []
+  })
+
+  const [store, setStore] = createStore({ fileIndex: 0 })
+
+  const isMultiFile = createMemo(() => files().length > 1)
+  const currentFile = createMemo(() => files()[store.fileIndex])
 
   const filepath = createMemo(() => {
+    if (isMultiFile()) return currentFile()?.filePath ?? ""
     const value = props.request.metadata?.filepath
     return typeof value === "string" ? value : ""
   })
   const diff = createMemo(() => {
+    if (isMultiFile()) return currentFile()?.patch ?? ""
     const value = props.request.metadata?.diff
     return typeof value === "string" ? value : ""
   })
@@ -44,8 +74,30 @@ function EditBody(props: { request: PermissionRequest }) {
   const ft = createMemo(() => filetype(filepath()))
   const scrollAcceleration = createMemo(() => getScrollAcceleration(config))
 
+  useKeyboard((evt) => {
+    if (dialog.stack.length > 0) return
+    if (!isMultiFile()) return
+
+    if (evt.name === "]") {
+      evt.preventDefault()
+      setStore("fileIndex", (i) => (i + 1) % files().length)
+    }
+    if (evt.name === "[") {
+      evt.preventDefault()
+      setStore("fileIndex", (i) => (i - 1 + files().length) % files().length)
+    }
+  })
+
   return (
     <box flexDirection="column" gap={1}>
+      <Show when={isMultiFile()}>
+        <box flexDirection="row" justifyContent="space-between" paddingLeft={1} paddingRight={1}>
+          <text fg={theme.text}>{fileTitle(currentFile())}</text>
+          <text fg={theme.textMuted}>
+            {store.fileIndex + 1}/{files().length}
+          </text>
+        </box>
+      </Show>
       <Show when={diff()}>
         <scrollbox
           height="100%"
@@ -199,10 +251,17 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
             if (permission === "edit") {
               const raw = props.request.metadata?.filepath
               const filepath = typeof raw === "string" ? raw : ""
+              const filesArray = Array.isArray(props.request.metadata?.files) ? props.request.metadata.files : []
+              const hasMultipleFiles = filesArray.length > 1
               return {
                 icon: "→",
                 title: `Edit ${pathFormatter.format(filepath)}`,
                 body: <EditBody request={props.request} />,
+                hints: hasMultipleFiles ? (
+                  <text fg={theme.text}>
+                    {"[ ]"} <span style={{ fg: theme.textMuted }}>files</span>
+                  </text>
+                ) : undefined,
               }
             }
 
@@ -405,6 +464,7 @@ export function PermissionPrompt(props: { request: PermissionRequest; directory?
               options={{ once: "Allow once", always: "Allow always", reject: "Reject" }}
               escapeKey="reject"
               fullscreen
+              hints={current.hints}
               onSelect={(option) => {
                 if (option === "always") {
                   setStore("stage", "always")
@@ -528,6 +588,7 @@ function Prompt<const T extends Record<string, string>>(props: {
   options: T
   escapeKey?: keyof T
   fullscreen?: boolean
+  hints?: JSX.Element
   onSelect: (option: keyof T) => void
 }) {
   const { theme } = useTheme()
@@ -694,6 +755,7 @@ function Prompt<const T extends Record<string, string>>(props: {
           </For>
         </box>
         <box flexDirection="row" gap={2} flexShrink={0}>
+          <Show when={props.hints}>{props.hints}</Show>
           <Show when={props.fullscreen}>
             <text fg={theme.text}>
               {fullscreenHint()} <span style={{ fg: theme.textMuted }}>{hint()}</span>

@@ -47,6 +47,7 @@ git push -u origin <your-custom-branch>
 
 ### 2026-07-17
 
+- **Ported PR #23262 (File Cycling in Permission Prompt):** Ported the file cycling feature from upstream PR #23262 to [packages/tui/src/routes/session/permission.tsx](file:///Users/mmcdonnell/code/opencode/packages/tui/src/routes/session/permission.tsx). This enables cycling through multiple files inside the TUI permission dialog using `[` and `]` keys.
 - **Added [FORK.md](file:///Users/mmcdonnell/code/opencode/FORK.md):** Outlines branching, syncing, and custom workspace strategy.
 - **Added [Makefile](file:///Users/mmcdonnell/code/opencode/Makefile):** Standard checkmake-compliant targets for building, cleaning, testing, and syncing with automatic Bun dependency management.
 - **Updated [Makefile](file:///Users/mmcdonnell/code/opencode/Makefile):** Added `push` target to automate pushing the active custom branch to your fork.
