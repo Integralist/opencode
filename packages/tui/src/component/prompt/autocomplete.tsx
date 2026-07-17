@@ -320,15 +320,52 @@ export function Autocomplete(props: {
       if (referenceMatch()) return []
       const { lineRange, baseQuery } = extractLineRange(input.query ?? "")
 
+      const isExplicitPath = baseQuery.startsWith(".") || baseQuery.startsWith("/") || baseQuery.startsWith("~")
+      let searchDir = input.location?.directory || project.data.project.mainDir || project.instance.directory() || process.cwd()
+      let searchQuery = baseQuery
+
+      if (searchDir && isExplicitPath) {
+        let expanded = baseQuery
+        if (expanded.startsWith("~/")) {
+          expanded = expanded.replace(/^~/, process.env.HOME || "")
+        }
+
+        const resolvedPath = path.resolve(searchDir, expanded)
+
+        if (baseQuery.endsWith("/") || baseQuery === "." || baseQuery === "..") {
+          searchDir = resolvedPath
+          searchQuery = ""
+        } else {
+          searchDir = path.dirname(resolvedPath)
+          searchQuery = path.basename(resolvedPath)
+        }
+      }
+
       // Get files from SDK
-      const result = await sdk.client.v2.fs.find({
-        query: baseQuery,
-        limit: "20",
-        location: {
-          directory: input.location?.directory,
-          workspace: input.location?.workspaceID ?? project.workspace.current(),
-        },
-      })
+      let result
+      if (isExplicitPath) {
+        result = await sdk.client.v2.fs.list({
+          location: {
+            directory: searchDir,
+            workspace: input.location?.workspaceID ?? project.workspace.current(),
+          },
+        })
+
+        // v2.fs.list returns all entries, so we filter by searchQuery
+        if (!result.error && result.data && searchQuery) {
+          const lowerQuery = searchQuery.toLowerCase()
+          result.data.data = result.data.data.filter((item) => item.path.toLowerCase().includes(lowerQuery))
+        }
+      } else {
+        result = await sdk.client.v2.fs.find({
+          query: searchQuery,
+          limit: "20",
+          location: {
+            directory: searchDir,
+            workspace: input.location?.workspaceID ?? project.workspace.current(),
+          },
+        })
+      }
 
       const options: AutocompleteOption[] = []
 
@@ -338,16 +375,38 @@ export function Autocomplete(props: {
         const width = props.anchor().width - 4
         options.push(
           ...result.data.data.map((item): AutocompleteOption => {
+            const absolutePath = path.join(result.data.location.directory, item.path)
+            let displayPath
+            if (baseQuery.startsWith("/")) {
+              displayPath = absolutePath
+            } else if (baseQuery.startsWith("~")) {
+              const home = process.env.HOME || ""
+              if (home && absolutePath.startsWith(home)) {
+                displayPath = `~${absolutePath.slice(home.length)}`
+              } else {
+                displayPath = absolutePath
+              }
+            } else {
+              const baseDir = input.location?.directory || project.data.project.mainDir || project.instance.directory() || process.cwd()
+              displayPath = path.relative(baseDir, absolutePath)
+              
+              if (isExplicitPath && baseQuery.startsWith("./") && !displayPath.startsWith(".")) {
+                displayPath = `./${displayPath}`
+              }
+            }
+
+            const displayItem = { ...item, path: displayPath || "." }
+
             const { filename, part } = createFilePart(
-              item,
-              path.join(result.data.location.directory, item.path),
+              displayItem,
+              absolutePath,
               lineRange,
             )
             return {
               display: Locale.truncateMiddle(filename, width),
               value: filename,
               isDirectory: item.type === "directory",
-              path: item.path,
+              path: displayPath || ".",
               onSelect: () => {
                 insertPart(filename, part)
               },
