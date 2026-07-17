@@ -47,6 +47,7 @@ git push -u origin <your-custom-branch>
 
 ### 2026-07-17
 
+- **Added Global BTW Side Query:** ([b52d39fb3](https://github.com/Integralist/opencode/commit/b52d39fb3)) Implemented the `/btw` command as a global side query dialog in the TUI, complete with `ctrl+b` global shortcut, responsive scrolling, proper interruption/cancellation logic via `ESC`, and refined UI layout.
 - **Exposed Sub-agent Cost Calculations in TUI Sidebar:** ([a1f59f85e](https://github.com/Integralist/opencode/commit/a1f59f85e)) Added recursive cost-summing for sub-agent threads. Updates the TUI Context sidebar to display a detailed breakdown of Main Agent cost, Sub-agent total cost, and combined Total Cost under the active session ID.
 - **Ported PR #23262 (File Cycling in Permission Prompt):** ([e74ec3ad3](https://github.com/Integralist/opencode/commit/e74ec3ad3)) Ported the file cycling feature from upstream PR #23262 to [packages/tui/src/routes/session/permission.tsx](file:///Users/mmcdonnell/code/opencode/packages/tui/src/routes/session/permission.tsx). This enables cycling through multiple files inside the TUI permission dialog using `[` and `]` keys.
 - **Added [FORK.md](file:///Users/mmcdonnell/code/opencode/FORK.md):** ([8fdf1124f](https://github.com/Integralist/opencode/commit/8fdf1124f)) Outlines branching, syncing, and custom workspace strategy.

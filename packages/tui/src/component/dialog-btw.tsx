@@ -14,6 +14,8 @@ export type DialogBtwProps = {
   question?: string
   sessionIDOverride?: string
   parentSessionID?: string
+  modelOverride?: string
+  effortOverride?: string
 }
 
 // Persistent states for /btw
@@ -89,14 +91,42 @@ export function DialogBtw(props: DialogBtwProps) {
       // We will find a suitable agent and model
       const currentModel = local.model.current()
       const agentName = parentSession?.agent ?? local.agent.current()?.name ?? "opencode"
-      const model = parentSession?.model ?? (currentModel ? {
+      let model = parentSession?.model ?? (currentModel ? {
         providerID: currentModel.providerID,
         id: currentModel.modelID,
         variant: local.model.variant.current(),
       } : {
         providerID: "opencode",
         id: "gemini-2.5-flash",
+        variant: undefined as string | undefined,
       })
+
+      if (props.modelOverride) {
+        let found = false
+        for (const provider of sync.data.provider) {
+          for (const mId in provider.models) {
+            if (mId === props.modelOverride || mId.includes(props.modelOverride) || `${provider.id}/${mId}` === props.modelOverride) {
+              model = {
+                providerID: provider.id,
+                id: mId,
+                variant: props.effortOverride ?? model.variant,
+              }
+              found = true
+              break
+            }
+          }
+          if (found) break
+        }
+        if (!found) {
+          model = {
+            providerID: model.providerID,
+            id: props.modelOverride,
+            variant: props.effortOverride ?? model.variant,
+          }
+        }
+      } else if (props.effortOverride) {
+        model.variant = props.effortOverride
+      }
 
       const label = `${model.id}${model.variant ? ` (${model.variant})` : ""}`
       setModelLabel(label)

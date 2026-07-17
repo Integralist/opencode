@@ -966,12 +966,27 @@ export function Prompt(props: PromptProps) {
       return true
     }
     if (trimmed.startsWith("/btw")) {
-      const question = trimmed.startsWith("/btw ") ? trimmed.slice(5).trim() : trimmed.slice(4).trim()
+      let question = trimmed.startsWith("/btw ") ? trimmed.slice(5).trim() : trimmed.slice(4).trim()
+      let modelOverride: string | undefined
+      let effortOverride: string | undefined
+
+      const flagRegex = /--(model|effort)=(?:(["'])(.*?)\2|([^\s]+))/g
+      question = question.replace(flagRegex, (match, flag, quote, quotedVal, unquotedVal) => {
+        if (flag === "model") {
+          modelOverride = quotedVal ?? unquotedVal
+        } else if (flag === "effort") {
+          effortOverride = quotedVal ?? unquotedVal
+        }
+        return ""
+      }).trim().replace(/ +/g, " ")
+
       if (question) {
         dialog.replace(() => (
           <DialogBtw
             question={question}
             parentSessionID={props.sessionID}
+            modelOverride={modelOverride}
+            effortOverride={effortOverride}
           />
         ))
         input.extmarks.clear()
