@@ -50,6 +50,7 @@ import { useKV } from "../../context/kv"
 import { createFadeIn } from "../../util/signal"
 import { DialogSkill } from "../dialog-skill"
 import { DialogWorkspaceUnavailable } from "../dialog-workspace-unavailable"
+import { DialogBtw } from "../dialog-btw"
 import { useArgs } from "../../context/args"
 import { OPENCODE_BASE_MODE, useBindings, useCommandShortcut, useLeaderActive, useOpencodeKeymap } from "../../keymap"
 import { useTuiConfig } from "../../config"
@@ -963,6 +964,25 @@ export function Prompt(props: PromptProps) {
     if (trimmed === "exit" || trimmed === "quit" || trimmed === ":q") {
       void exit()
       return true
+    }
+    if (trimmed.startsWith("/btw")) {
+      const question = trimmed.startsWith("/btw ") ? trimmed.slice(5).trim() : trimmed.slice(4).trim()
+      if (question) {
+        dialog.replace(() => (
+          <DialogBtw
+            question={question}
+            parentSessionID={props.sessionID}
+          />
+        ))
+        input.extmarks.clear()
+        setStore("prompt", {
+          input: "",
+          parts: [],
+        })
+        setStore("extmarkToPartIndex", new Map())
+        input.clear()
+        return true
+      }
     }
     const selectedModel = local.model.current()
     if (!selectedModel) {

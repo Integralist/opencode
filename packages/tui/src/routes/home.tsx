@@ -12,6 +12,9 @@ import { useEditorContext } from "../context/editor"
 import { useTerminalDimensions } from "@opentui/solid"
 import { useTuiConfig } from "../config"
 import { HomeSessionDestinationProvider } from "./home/session-destination"
+import { useBindings } from "../keymap"
+import { useDialog } from "../ui/dialog"
+import { toggleBtwDialog } from "../component/dialog-btw"
 
 let once = false
 const placeholder = {
@@ -30,12 +33,27 @@ export function Home() {
   const editor = useEditorContext()
   const dimensions = useTerminalDimensions()
   const tuiConfig = useTuiConfig()
+  const dialog = useDialog()
   const promptMaxWidth = createMemo(() => {
     const configured = tuiConfig.prompt?.max_width
     if (configured === "auto") return Math.max(75, Math.floor(dimensions().width * 0.7))
     return configured ?? 75
   })
   let sent = false
+
+  useBindings(() => ({
+    priority: 100,
+    bindings: [
+      {
+        key: "ctrl+b",
+        desc: "Toggle BTW Side Query",
+        group: "Session",
+        cmd: () => {
+          toggleBtwDialog(dialog)
+        },
+      },
+    ],
+  }))
 
   onMount(() => {
     editor.clearSelection()

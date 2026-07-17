@@ -53,6 +53,7 @@ import { DialogConfirm } from "../../ui/dialog-confirm"
 import { DialogTimeline } from "./dialog-timeline"
 import { DialogForkFromTimeline } from "./dialog-fork-from-timeline"
 import { DialogSessionRename } from "../../component/dialog-session-rename"
+import { toggleBtwDialog } from "../../component/dialog-btw"
 import { Sidebar } from "./sidebar"
 import { SubagentFooter } from "./subagent-footer.tsx"
 import { filetype } from "../../util/filetype"
@@ -1107,6 +1108,20 @@ export function Session() {
   useBindings(() => ({
     mode: OPENCODE_BASE_MODE,
     bindings: tuiConfig.keybinds.gather("session", sessionBindingCommands),
+  }))
+
+  useBindings(() => ({
+    priority: 100,
+    bindings: [
+      {
+        key: "ctrl+b",
+        desc: "Toggle BTW Side Query",
+        group: "Session",
+        cmd: () => {
+          toggleBtwDialog(dialog, route.sessionID)
+        },
+      },
+    ],
   }))
 
   useBindings(() => ({
