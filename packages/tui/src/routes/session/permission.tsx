@@ -17,6 +17,10 @@ import { useTuiConfig } from "../../config"
 import { OPENCODE_BASE_MODE, useBindings, useCommandShortcut } from "../../keymap"
 import { usePathFormatter } from "../../context/path-format"
 import { useDialog } from "../../ui/dialog"
+import { useClipboard } from "../../context/clipboard"
+import { useToast } from "../../ui/toast"
+import { Selection } from "../../util/selection"
+import { Flag } from "@opencode-ai/core/flag/flag"
 
 type PermissionStage = "permission" | "always" | "reject"
 
@@ -601,6 +605,8 @@ function Prompt<const T extends Record<string, string>>(props: {
   })
   const narrow = createMemo(() => dimensions().width < 80)
   const fullscreenHint = useCommandShortcut("permission.prompt.fullscreen")
+  const clipboard = useClipboard()
+  const toast = useToast()
 
   useBindings(() => ({
     mode: OPENCODE_BASE_MODE,
@@ -687,7 +693,7 @@ function Prompt<const T extends Record<string, string>>(props: {
   }))
 
   const hint = createMemo(() => (store.expanded ? "minimize" : "fullscreen"))
-  useRenderer()
+  const renderer = useRenderer()
 
   const content = () => (
     <box
@@ -695,6 +701,11 @@ function Prompt<const T extends Record<string, string>>(props: {
       border={["left"]}
       borderColor={theme.warning}
       customBorderChars={SplitBorder.customBorderChars}
+      onMouseUp={
+        !Flag.OPENCODE_EXPERIMENTAL_DISABLE_COPY_ON_SELECT
+          ? () => Selection.copy(renderer, toast, clipboard)
+          : undefined
+      }
       {...(store.expanded
         ? { top: dimensions().height * -1 + 1, bottom: 1, left: 2, right: 2, position: "absolute" }
         : {
