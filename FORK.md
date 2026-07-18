@@ -45,6 +45,10 @@ git push -u origin <your-custom-branch>
 
 ## Changelog
 
+### 2026-07-18
+
+- **Added Session Recap Card:** ([39a8902e6](https://github.com/Integralist/opencode/commit/39a8902e6)) Generate a read-only LLM summary of a session and surface it in the TUI as a recap card on open, after idle, or on demand via `/recap`. Recap builds its transcript from the legacy V1 message/part tables (where sessions actually persist history), falling back to the V2 projected message store, and falls back to the default model when the session's own model is unavailable so the summary is best-effort and never blocks. Adds the `/api/session/:sessionID/recap` endpoint across protocol, server, core execution/runner, and the generated SDK/client.
+
 ### 2026-07-17
 
 - **Added `/effort` Slash Command Alias:** ([59e520713](https://github.com/Integralist/opencode/commit/59e520713)) Added `/effort` as an alias for the `/variants` slash command to quickly switch model variants.
