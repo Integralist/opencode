@@ -229,7 +229,7 @@ export function Session() {
     // Skip recap if the session is empty or only has the user prompt but no assistant reply yet.
     if (msgs.length <= 1) return null
 
-    const assistantMsgs = [...msgs].reverse().filter((m) => m.role === "assistant" || m.type === "assistant")
+    const assistantMsgs = [...msgs].reverse().filter((m) => m.role === "assistant")
     if (assistantMsgs.length === 0) return null
 
     const completedTasks: string[] = []
