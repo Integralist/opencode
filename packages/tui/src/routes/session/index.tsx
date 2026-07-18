@@ -417,19 +417,25 @@ export function Session() {
       await sync.session.sync(sessionID)
       if (route.sessionID === sessionID && scroll) scroll.scrollBy(100_000)
 
-      const data = getRecapData(sessionID)
-      if (data) {
-        sdk.client.v2.session.recap({ sessionID }).then((res) => {
-          const responseData = res?.data;
-          const summary = typeof responseData === "string" ? responseData : (typeof responseData?.data === "string" ? responseData.data : undefined);
-          if (summary && summary !== "No sufficient context for a summary.") {
-            setRecap({
-              reason: "startup",
-              ...data,
-              goal: summary,
-            })
-          }
-        }).catch(() => { })
+      // Only show a startup recap when re-opening a session that existed
+      // before this TUI instance. A session created within the last 60s is
+      // brand new — there's nothing to "recap."
+      const sessionAge = Date.now() - (result.data.time.created ?? Date.now())
+      if (sessionAge > 60_000) {
+        const data = getRecapData(sessionID)
+        if (data) {
+          sdk.client.v2.session.recap({ sessionID }).then((res) => {
+            const responseData = res?.data;
+            const summary = typeof responseData === "string" ? responseData : (typeof responseData?.data === "string" ? responseData.data : undefined);
+            if (summary && summary !== "No sufficient context for a summary.") {
+              setRecap({
+                reason: "startup",
+                ...data,
+                goal: summary,
+              })
+            }
+          }).catch(() => { })
+        }
       }
     })().catch((error) => {
       if (route.sessionID !== sessionID) return
