@@ -48,6 +48,7 @@ git push -u origin <your-custom-branch>
 ### 2026-07-18
 
 - **Added Session Recap Card:** ([39a8902e6](https://github.com/Integralist/opencode/commit/39a8902e6)) Generate a read-only LLM summary of a session and surface it in the TUI as a recap card on open, after idle, or on demand via `/recap`. Recap builds its transcript from the legacy V1 message/part tables (where sessions actually persist history), falling back to the V2 projected message store, and falls back to the default model when the session's own model is unavailable so the summary is best-effort and never blocks. Adds the `/api/session/:sessionID/recap` endpoint across protocol, server, core execution/runner, and the generated SDK/client.
+- **Fixed Copy-on-Select in Permission Prompt:** ([88cb2bb67](https://github.com/Integralist/opencode/commit/88cb2bb67)) The permission prompt's fullscreen view (ctrl+f) renders via Portal outside the root box, so the global copy-on-select handler never fired. Added an `onMouseUp` copy handler directly on the prompt's content box so clipboard copy works in both inline and fullscreen views.
 
 ### 2026-07-17
 
