@@ -15,6 +15,8 @@ export interface Interface {
   readonly wake: (sessionID: SessionSchema.ID) => Effect.Effect<void>
   /** Interrupt active work owned by this process. Idle interruption is a no-op. */
   readonly interrupt: (sessionID: SessionSchema.ID) => Effect.Effect<void>
+  /** Generates a read-only recap summary of the session using the LLM. */
+  readonly recap: (sessionID: SessionSchema.ID) => Effect.Effect<string, SessionRunner.RunError>
 }
 
 /** Routes execution from a Session ID to the runner owned by that Session's Location. */
@@ -30,5 +32,6 @@ export const noopLayer = Layer.succeed(
     resume: () => Effect.void,
     wake: () => Effect.void,
     interrupt: () => Effect.void,
+    recap: () => Effect.succeed(""),
   }),
 )

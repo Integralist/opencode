@@ -33,6 +33,14 @@ const layer = Layer.effect(
       interrupt: coordinator.interrupt,
       resume: coordinator.run,
       wake: coordinator.wake,
+      recap: Effect.fnUntraced(function* (sessionID: SessionSchema.ID) {
+        const session = yield* store.get(sessionID)
+        if (!session) return yield* Effect.die(`Session not found: ${sessionID}`)
+        return yield* SessionRunner.Service.use((runner) => runner.recap(sessionID)).pipe(
+          Effect.provide(locations.get(session.location)),
+          Effect.tapCause((cause) => Effect.logError("Failed to recap Session", cause)),
+        )
+      }),
     })
   }),
 )

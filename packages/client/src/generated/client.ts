@@ -19,6 +19,8 @@ import type {
   SessionsPromptOutput,
   SessionsCompactInput,
   SessionsCompactOutput,
+  SessionsRecapInput,
+  SessionsRecapOutput,
   SessionsWaitInput,
   SessionsWaitOutput,
   SessionsStageInput,
@@ -390,6 +392,17 @@ export function make(options: ClientOptions) {
           },
           requestOptions,
         ),
+      recap: (input: SessionsRecapInput, requestOptions?: RequestOptions) =>
+        request<{ readonly data: SessionsRecapOutput }>(
+          {
+            method: "POST",
+            path: `/api/session/${encodeURIComponent(input.sessionID)}/recap`,
+            successStatus: 200,
+            declaredStatuses: [404, 503, 400, 401],
+            empty: false,
+          },
+          requestOptions,
+        ).then((value) => value.data),
       wait: (input: SessionsWaitInput, requestOptions?: RequestOptions) =>
         request<SessionsWaitOutput>(
           {

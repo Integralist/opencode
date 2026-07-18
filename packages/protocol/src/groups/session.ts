@@ -238,6 +238,21 @@ export const makeSessionGroup = <I extends HttpApiMiddleware.AnyId, S>(sessionLo
         ),
     )
     .add(
+      HttpApiEndpoint.post("session.recap", "/api/session/:sessionID/recap", {
+        params: { sessionID: Session.ID },
+        success: Schema.Struct({ data: Schema.String }),
+        error: [SessionNotFoundError, ServiceUnavailableError],
+      })
+        .middleware(sessionLocationMiddleware)
+        .annotateMerge(
+          OpenApi.annotations({
+            identifier: "v2.session.recap",
+            summary: "Generate session recap",
+            description: "Generate a summary of the session history without compacting it.",
+          }),
+        ),
+    )
+    .add(
       HttpApiEndpoint.post("session.wait", "/api/session/:sessionID/wait", {
         params: { sessionID: Session.ID },
         success: HttpApiSchema.NoContent,

@@ -486,6 +486,10 @@ export type SessionsCompactInput = { readonly sessionID: { readonly sessionID: s
 
 export type SessionsCompactOutput = void
 
+export type SessionsRecapInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
+
+export type SessionsRecapOutput = { readonly data: string }["data"]
+
 export type SessionsWaitInput = { readonly sessionID: { readonly sessionID: string }["sessionID"] }
 
 export type SessionsWaitOutput = void

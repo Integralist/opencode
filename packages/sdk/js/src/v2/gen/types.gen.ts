@@ -11631,6 +11631,47 @@ export type V2SessionCompactResponses = {
 
 export type V2SessionCompactResponse = V2SessionCompactResponses[keyof V2SessionCompactResponses]
 
+export type V2SessionRecapData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/api/session/{sessionID}/recap"
+}
+
+export type V2SessionRecapErrors = {
+  /**
+   * InvalidRequestError
+   */
+  400: InvalidRequestError
+  /**
+   * UnauthorizedError
+   */
+  401: UnauthorizedError
+  /**
+   * SessionNotFoundError
+   */
+  404: SessionNotFoundError
+  /**
+   * ServiceUnavailableError
+   */
+  503: ServiceUnavailableError
+}
+
+export type V2SessionRecapError = V2SessionRecapErrors[keyof V2SessionRecapErrors]
+
+export type V2SessionRecapResponses = {
+  /**
+   * Success
+   */
+  200: {
+    data: string
+  }
+}
+
+export type V2SessionRecapResponse = V2SessionRecapResponses[keyof V2SessionRecapResponses]
+
 export type V2SessionWaitData = {
   body?: never
   path: {

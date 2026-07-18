@@ -142,7 +142,9 @@ const sessionBindingCommands = [
   "session.parent",
   "session.child.next",
   "session.child.previous",
+  "session.recap",
 ] as const
+
 
 const sessionGlobalBindingCommands = [
   "session.page.up",
@@ -212,17 +214,125 @@ export function Session() {
       .toSorted((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   })
   const messages = createMemo(() => sync.data.message[route.sessionID] ?? [])
+
+  const [recap, setRecap] = createSignal<{
+    reason: "startup" | "idle" | "manual"
+    idleDurationMs?: number
+    goal?: string
+    completedTasks: string[]
+    changedFiles: string[]
+    pendingQuestions: string[]
+  } | null>(null)
+
+  function getRecapData(sessionID: string) {
+    const msgs = sync.data.message[sessionID] ?? []
+    // Skip recap if the session is empty or only has the user prompt but no assistant reply yet.
+    if (msgs.length <= 1) return null
+
+    const assistantMsgs = [...msgs].reverse().filter((m) => m.role === "assistant" || m.type === "assistant")
+    if (assistantMsgs.length === 0) return null
+
+    const completedTasks: string[] = []
+    for (const m of assistantMsgs.slice(0, 3)) {
+      const parts = sync.data.part[m.id] ?? []
+      for (const part of parts) {
+        if (part.type === "tool" && part.state.status === "completed") {
+          if (part.tool === "run_command" || part.tool === "shell") {
+            const cmd = String(part.state.input.command ?? part.state.input.CommandLine ?? "")
+            if (cmd) completedTasks.push(`Ran command: \`${cmd}\``)
+          } else if (part.tool === "write" || part.tool === "write_file") {
+            const file = String(part.state.input.filePath ?? part.state.input.TargetFile ?? "")
+            if (file) completedTasks.push(`Wrote file: \`${file}\``)
+          } else if (part.tool === "edit" || part.tool === "replace_file_content" || part.tool === "multi_replace_file_content") {
+            const file = String(part.state.input.filePath ?? part.state.input.TargetFile ?? "")
+            if (file) completedTasks.push(`Edited file: \`${file}\``)
+          } else {
+            completedTasks.push(`Executed ${part.tool}`)
+          }
+        }
+      }
+    }
+
+    const changedFiles: string[] = []
+    const diffs = sync.data.session_diff[sessionID] ?? []
+    for (const diff of diffs) {
+      if (diff.file) {
+        const statusSuffix = diff.status ? ` (${diff.status})` : ""
+        changedFiles.push(`\`${diff.file}\` +${diff.additions} -${diff.deletions}${statusSuffix}`)
+      }
+    }
+
+    const pendingQuestions: string[] = []
+    const perms = sync.data.permission[sessionID] ?? []
+    for (const p of perms) {
+      pendingQuestions.push(`Waiting for permission: approve tool \`${p.tool}\``)
+    }
+    const quests = sync.data.question[sessionID] ?? []
+    for (const q of quests) {
+      for (const item of q.questions) {
+        pendingQuestions.push(`Waiting for answer to question: "${item.question}"`)
+      }
+    }
+
+
+    return {
+      completedTasks: completedTasks.slice(0, 5),
+      changedFiles,
+      pendingQuestions,
+    }
+  }
+
+  let lastInputTime = Date.now()
+  const recordActivity = () => {
+    lastInputTime = Date.now()
+  }
+
+  onMount(() => {
+    const handleData = () => {
+      recordActivity()
+    }
+    process.stdin.on("data", handleData)
+
+    const checkInterval = setInterval(() => {
+      const now = Date.now()
+      const idleDuration = now - lastInputTime
+      const IDLE_LIMIT = 5 * 60 * 1000 // 5 minutes
+
+      if (idleDuration >= IDLE_LIMIT && !recap()) {
+        const data = getRecapData(route.sessionID)
+        if (data) {
+          sdk.client.v2.session.recap({ sessionID: route.sessionID }).then((res) => {
+            const responseData = res?.data;
+            const summary = typeof responseData === "string" ? responseData : (typeof responseData?.data === "string" ? responseData.data : undefined);
+            if (summary && summary !== "No sufficient context for a summary.") {
+              setRecap({
+                reason: "idle",
+                idleDurationMs: idleDuration,
+                ...data,
+                goal: summary,
+              })
+            }
+          }).catch(() => { })
+        }
+      }
+    }, 10 * 1000)
+
+    onCleanup(() => {
+      process.stdin.off("data", handleData)
+      clearInterval(checkInterval)
+    })
+  })
   const foregroundTasks = createMemo(() =>
     sync.data.capabilities.experimentalBackgroundSubagents
       ? messages().flatMap((message) =>
-          (sync.data.part[message.id] ?? []).filter(
-            (part): part is ToolPart =>
-              part.type === "tool" &&
-              part.tool === "task" &&
-              part.state.status === "running" &&
-              part.state.metadata?.background !== true,
-          ),
-        )
+        (sync.data.part[message.id] ?? []).filter(
+          (part): part is ToolPart =>
+            part.type === "tool" &&
+            part.tool === "task" &&
+            part.state.status === "running" &&
+            part.state.metadata?.background !== true,
+        ),
+      )
       : [],
   )
   const permissions = createMemo(() => {
@@ -301,11 +411,26 @@ export function Session() {
         // (which will be non-interactive)
         try {
           await sync.bootstrap({ fatal: false })
-        } catch {}
+        } catch { }
       }
       editor.reconnect(result.data.directory)
       await sync.session.sync(sessionID)
       if (route.sessionID === sessionID && scroll) scroll.scrollBy(100_000)
+
+      const data = getRecapData(sessionID)
+      if (data) {
+        sdk.client.v2.session.recap({ sessionID }).then((res) => {
+          const responseData = res?.data;
+          const summary = typeof responseData === "string" ? responseData : (typeof responseData?.data === "string" ? responseData.data : undefined);
+          if (summary && summary !== "No sufficient context for a summary.") {
+            setRecap({
+              reason: "startup",
+              ...data,
+              goal: summary,
+            })
+          }
+        }).catch(() => { })
+      }
     })().catch((error) => {
       if (route.sessionID !== sessionID) return
       toast.show({
@@ -531,6 +656,50 @@ export function Session() {
       },
     },
     {
+      title: "Show session recap",
+      value: "session.recap",
+      category: "Session",
+      slash: {
+        name: "recap",
+      },
+      run: () => {
+        const data = getRecapData(route.sessionID)
+        if (data) {
+          toast.show({
+            message: "Generating summary...",
+            variant: "info",
+          })
+          sdk.client.v2.session.recap({ sessionID: route.sessionID }).then((res) => {
+            const responseData = res?.data;
+            const summary = typeof responseData === "string" ? responseData : (typeof responseData?.data === "string" ? responseData.data : undefined);
+            if (summary && summary !== "No sufficient context for a summary.") {
+              setRecap({
+                reason: "manual",
+                ...data,
+                goal: summary,
+              })
+            } else {
+              toast.show({
+                message: "No sufficient context to generate a summary.",
+                variant: "info",
+              })
+            }
+          }).catch(() => {
+            toast.show({
+              message: "Failed to generate summary.",
+              variant: "error",
+            })
+          })
+        } else {
+          toast.show({
+            message: "No activity to summarize yet.",
+            variant: "info",
+          })
+        }
+        dialog.clear()
+      },
+    },
+    {
       title: "Fork session",
       value: "session.fork",
       category: "Session",
@@ -610,7 +779,7 @@ export function Session() {
       },
       run: async () => {
         const status = sync.data.session_status?.[route.sessionID]
-        if (status?.type !== "idle") await sdk.client.session.abort({ sessionID: route.sessionID }).catch(() => {})
+        if (status?.type !== "idle") await sdk.client.session.abort({ sessionID: route.sessionID }).catch(() => { })
         const revert = session()?.revert?.messageID
         const message = messages().findLast((x) => (!revert || x.id < revert) && x.role === "user")
         if (!message) return
@@ -1203,7 +1372,7 @@ export function Session() {
                   {(message, index) => (
                     <Switch>
                       <Match when={message.id === revert()?.messageID}>
-                        {(function () {
+                        {(function() {
                           const redoShortcut = useCommandShortcut("session.redo")
                           const [hover, setHover] = createSignal(false)
                           const dialog = useDialog()
@@ -1293,6 +1462,9 @@ export function Session() {
                     </Switch>
                   )}
                 </For>
+                <Show when={recap()}>
+                  <RecapCard recap={recap()!} onClose={() => setRecap(null)} />
+                </Show>
               </scrollbox>
               <box flexShrink={0}>
                 <Show when={permissions().length > 0}>
@@ -1326,6 +1498,7 @@ export function Session() {
                       disabled={disabled()}
                       onSubmit={() => {
                         toBottom()
+                        setRecap(null)
                       }}
                       sessionID={route.sessionID}
                       right={<pluginRuntime.Slot name="session_prompt_right" session_id={route.sessionID} />}
@@ -2723,3 +2896,87 @@ export function parseDiagnostics(value: unknown, filePath: string) {
     })
     .slice(0, 3)
 }
+
+function RecapCard(props: {
+  recap: {
+    reason: "startup" | "idle" | "manual"
+    idleDurationMs?: number
+    goal?: string
+    completedTasks: string[]
+    changedFiles: string[]
+    pendingQuestions: string[]
+  }
+  onClose: () => void
+}) {
+  const { theme } = useTheme()
+  const title = createMemo(() => {
+    if (props.recap.reason === "startup") return "Welcome Back! Here is your session recap"
+    if (props.recap.reason === "idle") {
+      const mins = Math.round((props.recap.idleDurationMs ?? 0) / 60000)
+      const durationStr = mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`
+      return `Idle for ${durationStr} — Session Recap`
+    }
+    return "Session Recap"
+  })
+
+  return (
+    <box
+      marginTop={1}
+      marginBottom={1}
+      flexDirection="column"
+      border={["left", "top", "bottom", "right"]}
+      borderColor={theme.primary}
+      paddingLeft={2}
+      paddingRight={2}
+      paddingTop={1}
+      paddingBottom={1}
+      backgroundColor={theme.backgroundPanel}
+    >
+      <box flexDirection="row" justifyContent="space-between" marginBottom={1}>
+        <text><span style={{ fg: theme.primary, bold: true }}>{title()}</span></text>
+        <text fg={theme.textMuted} onMouseUp={props.onClose}> [Dismiss] </text>
+      </box>
+
+      <box flexDirection="column" gap={1}>
+        <box flexDirection="column">
+          <text><span style={{ fg: theme.textMuted, bold: true }}>Summary:</span></text>
+          <text fg={theme.text} wrapMode="word" paddingLeft={2}>{props.recap.goal || "No summary available"}</text>
+        </box>
+
+        <Show when={props.recap.completedTasks.length > 0}>
+          <box flexDirection="column">
+            <text><span style={{ fg: theme.success, bold: true }}>Recent Activity:</span></text>
+            <For each={props.recap.completedTasks}>
+              {(task) => (
+                <text fg={theme.text} paddingLeft={2}>• {task}</text>
+              )}
+            </For>
+          </box>
+        </Show>
+
+        <Show when={props.recap.changedFiles.length > 0}>
+          <box flexDirection="column">
+            <text><span style={{ fg: theme.info, bold: true }}>Modified Files:</span></text>
+            <For each={props.recap.changedFiles}>
+              {(file) => (
+                <text fg={theme.text} paddingLeft={2}>• {file}</text>
+              )}
+            </For>
+          </box>
+        </Show>
+
+        <Show when={props.recap.pendingQuestions.length > 0}>
+          <box flexDirection="column">
+            <text><span style={{ fg: theme.warning, bold: true }}>Pending Actions:</span></text>
+            <For each={props.recap.pendingQuestions}>
+              {(pending) => (
+                <text fg={theme.text} paddingLeft={2}>• {pending}</text>
+              )}
+            </For>
+          </box>
+        </Show>
+      </box>
+    </box>
+  )
+}
+

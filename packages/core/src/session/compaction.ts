@@ -234,8 +234,53 @@ export const make = (dependencies: Dependencies) => {
       return false
     return yield* compactAfterOverflow(input)
   })
+  const generateSummaryFromText = Effect.fn("SessionCompaction.generateSummaryFromText")(function* (input: {
+    readonly contextText: string
+    readonly model: Model
+  }) {
+    if (!input.contextText.trim()) return "No sufficient context for a summary."
+    const summaryPrompt = `Based on the following conversation history, please write a brief, 1-2 sentence conversational summary of what the user is asking or trying to accomplish, and why (if deducible). Phrase it directly to the user (e.g., "You've been asking about..."). Do not include any other markdown or headers, just the short summary.\n\n<history>\n${input.contextText}\n</history>`
+    const summaryOutput = Math.min(input.model.route.defaults.limits?.output || SUMMARY_OUTPUT_TOKENS, SUMMARY_OUTPUT_TOKENS)
+
+    const chunks: string[] = []
+    let failed = false
+    yield* dependencies.llm
+      .stream(
+        LLM.request({
+          model: input.model,
+          messages: [Message.user(summaryPrompt)],
+          tools: [],
+          generation: { maxTokens: summaryOutput },
+        }),
+      )
+      .pipe(
+        Stream.runForEach((event) => {
+          if (LLMEvent.is.providerError(event)) failed = true
+          if (LLMEvent.is.textDelta(event)) chunks.push(event.text)
+          return Effect.void
+        }),
+        Effect.catchTag("LLM.Error", () => Effect.void),
+      )
+    const summary = chunks.join("")
+    if (failed || !summary.trim()) return "Failed to generate summary."
+    return summary
+  })
+  const generateSummaryString = Effect.fn("SessionCompaction.generateSummaryString")(function* (input: {
+    readonly sessionID: SessionSchema.ID
+    readonly entries: readonly Entry[]
+    readonly model: Model
+  }) {
+    const selected = select(input.entries, config.tokens)
+    const previousSummary = input.entries.find((entry) => entry.message.type === "compaction")?.message
+    if (!selected || (selected.head.length === 0 && selected.recent.length === 0 && previousSummary?.type !== "compaction")) return "No sufficient context for a summary."
+    const contextText = [previousSummary?.type === "compaction" ? previousSummary.recent : "", selected.head, selected.recent].filter(Boolean).join("\n\n")
+    return yield* generateSummaryFromText({ contextText, model: input.model })
+  })
+
   return {
     compactIfNeeded,
     compactAfterOverflow,
+    generateSummaryString,
+    generateSummaryFromText,
   }
 }

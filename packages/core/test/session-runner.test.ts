@@ -248,6 +248,7 @@ const execution = Layer.effect(
       resume: coordinator.run,
       wake: coordinator.wake,
       interrupt: coordinator.interrupt,
+      recap: sessionRunner.recap,
     })
   }),
 ).pipe(Layer.provide(runnerLayer))

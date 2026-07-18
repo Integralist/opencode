@@ -8,7 +8,8 @@ import {
   isContextOverflowFailure,
   type ProviderErrorEvent,
 } from "@opencode-ai/llm"
-import { Cause, DateTime, Effect, FiberSet, Layer, Option, Semaphore, Stream } from "effect"
+import { Cause, DateTime, Effect, FiberSet, Layer, Option, Semaphore, Stream, Schema } from "effect"
+import { asc, eq } from "drizzle-orm"
 import { AgentV2 } from "../../agent"
 import { Config } from "../../config"
 import { Database } from "../../database/database"
@@ -28,6 +29,8 @@ import { SessionContextEpoch } from "../context-epoch"
 import { SessionCompaction } from "../compaction"
 import { SessionEvent } from "../event"
 import { SessionHistory } from "../history"
+import { SessionMessage } from "../message"
+import { MessageTable, PartTable, SessionMessageTable } from "../sql"
 import { SessionInput } from "../input"
 import { SessionSchema } from "../schema"
 import { SessionStore } from "../store"
@@ -89,6 +92,10 @@ import { llmClient } from "../../effect/app-node-platform"
  * provider turn. Registry definitions are advertised, local tool calls are settled durably, and an
  * explicit loop starts the next provider turn after local settlement. Configured agent step limits bound the loop.
  */
+
+// Upper bound on the recap transcript so summarizing a long session stays within a
+// single cheap provider turn; the most recent characters are kept.
+const RECAP_CONTEXT_MAX_CHARS = 24_000
 
 const layer = Layer.effect(
   Service,
@@ -405,8 +412,85 @@ const layer = Layer.effect(
       }
     })
 
+    // Most sessions persist their transcript in the legacy V1 message/part tables
+    // rather than the V2 session_message store, so build the recap context from
+    // there and only fall back to the projected V2 messages when V1 is empty.
+    const buildRecapContext = Effect.fnUntraced(function* (sessionID: SessionSchema.ID) {
+      const messages = yield* db
+        .select({ id: MessageTable.id, data: MessageTable.data })
+        .from(MessageTable)
+        .where(eq(MessageTable.session_id, sessionID))
+        .orderBy(asc(MessageTable.time_created), asc(MessageTable.id))
+        .all()
+        .pipe(Effect.orDie)
+      if (messages.length === 0) return ""
+      const parts = yield* db
+        .select({ message_id: PartTable.message_id, id: PartTable.id, data: PartTable.data })
+        .from(PartTable)
+        .where(eq(PartTable.session_id, sessionID))
+        .orderBy(asc(PartTable.id))
+        .all()
+        .pipe(Effect.orDie)
+      const grouped = new Map<string, typeof parts>()
+      for (const part of parts) {
+        const list = grouped.get(part.message_id)
+        if (list) list.push(part)
+        else grouped.set(part.message_id, [part])
+      }
+      const lines = messages.flatMap((message) => {
+        const speaker = message.data.role === "user" ? "User" : "Assistant"
+        return (grouped.get(message.id) ?? []).flatMap((part) => {
+          // PartTable.data is stored as an Omit over the V1 part union, which TypeScript
+          // collapses to the shared keys, so read the discriminated fields structurally.
+          const data = part.data as { type: string; text?: string; tool?: string }
+          if (data.type === "text" && data.text?.trim()) return [`[${speaker}]: ${data.text.trim()}`]
+          if (data.type === "reasoning" && data.text?.trim()) return [`[Assistant reasoning]: ${data.text.trim()}`]
+          if (data.type === "tool" && data.tool) return [`[Assistant tool call]: ${data.tool}`]
+          return []
+        })
+      })
+      const text = lines.join("\n\n")
+      return text.length > RECAP_CONTEXT_MAX_CHARS ? text.slice(-RECAP_CONTEXT_MAX_CHARS) : text
+    })
+
+    const recap = Effect.fn("SessionRunner.recap")(function* (sessionID: SessionSchema.ID) {
+      return yield* Effect.gen(function* () {
+        const session = yield* getSession(sessionID)
+        // The summary is a cheap side task, so if the session's original model is gone
+        // fall back to the default/any supported model rather than failing the recap.
+        const model = yield* models.resolve(session).pipe(
+          Effect.catchTags({
+            "SessionRunnerModel.ModelUnavailableError": () => models.resolve({ ...session, model: undefined }),
+            "SessionRunnerModel.ModelNotSelectedError": () => models.resolve({ ...session, model: undefined }),
+          }),
+        )
+        const contextText = yield* buildRecapContext(sessionID)
+        if (contextText) return yield* compaction.generateSummaryFromText({ contextText, model })
+        const entries = yield* db
+          .select()
+          .from(SessionMessageTable)
+          .where(eq(SessionMessageTable.session_id, sessionID))
+          .orderBy(asc(SessionMessageTable.seq))
+          .all()
+          .pipe(
+            Effect.orDie,
+            Effect.andThen(Effect.forEach((row) =>
+              Schema.decodeUnknownEffect(SessionMessage.Message)({ ...row.data, id: row.id, type: row.type }).pipe(
+                Effect.map((message) => ({ seq: row.seq, message })),
+              ),
+            )),
+          )
+        return yield* compaction.generateSummaryString({ sessionID, entries, model })
+      }).pipe(
+        // Recap is best-effort: any model-resolution failure yields the fallback string
+        // rather than surfacing an error, so the caller simply shows no recap card.
+        Effect.catch(() => Effect.succeed("No sufficient context for a summary.")),
+      )
+    })
+
     return Service.of({
       run,
+      recap,
     })
   }),
 )

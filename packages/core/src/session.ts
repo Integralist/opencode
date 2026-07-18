@@ -95,7 +95,7 @@ export class NotFoundError extends Schema.TaggedErrorClass<NotFoundError>()("Ses
 export class OperationUnavailableError extends Schema.TaggedErrorClass<OperationUnavailableError>()(
   "Session.OperationUnavailableError",
   {
-    operation: Schema.Literals(["move", "shell", "skill", "switchAgent", "compact", "wait"]),
+    operation: Schema.Literals(["move", "shell", "skill", "switchAgent", "compact", "recap", "wait"]),
   },
 ) {}
 
@@ -164,6 +164,7 @@ export interface Interface {
     resume?: boolean
   }) => Effect.Effect<void, OperationUnavailableError>
   readonly compact: (input: CompactInput) => Effect.Effect<void, NotFoundError | OperationUnavailableError>
+  readonly recap: (sessionID: SessionSchema.ID) => Effect.Effect<string, NotFoundError | OperationUnavailableError>
   readonly wait: (id: SessionSchema.ID) => Effect.Effect<void, NotFoundError | OperationUnavailableError>
   readonly active: Effect.Effect<ReadonlySet<SessionSchema.ID>>
   readonly resume: (sessionID: SessionSchema.ID) => Effect.Effect<void, NotFoundError | SessionRunner.RunError>
@@ -417,6 +418,12 @@ const layer = Layer.effect(
       compact: Effect.fn("V2Session.compact")(function* (input) {
         yield* result.get(input.sessionID)
         return yield* new OperationUnavailableError({ operation: "compact" })
+      }),
+      recap: Effect.fn("V2Session.recap")(function* (sessionID) {
+        yield* result.get(sessionID)
+        return yield* execution.recap(sessionID).pipe(
+          Effect.catchCause((defect) => Effect.logError("RECAP ERROR", defect).pipe(Effect.andThen(Effect.fail(new OperationUnavailableError({ operation: "recap" })))))
+        )
       }),
       wait: Effect.fn("V2Session.wait")(function* (sessionID) {
         yield* result.get(sessionID)
