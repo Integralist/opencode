@@ -532,6 +532,32 @@ export function Autocomplete(props: {
     }))
   })
 
+  const skillOptions = createMemo((): AutocompleteOption[] => {
+    const results: AutocompleteOption[] = []
+    for (const serverCommand of sync.data.command) {
+      if (serverCommand.source !== "skill") continue
+      results.push({
+        display: "/" + serverCommand.name,
+        description: serverCommand.description,
+        value: serverCommand.name,
+        onSelect: () => {
+          const newText = "/" + serverCommand.name + " "
+          const cursor = props.input().logicalCursor
+          props.input().deleteRange(0, 0, cursor.row, cursor.col)
+          props.input().insertText(newText)
+          props.input().cursorOffset = Bun.stringWidth(newText)
+        },
+      })
+    }
+    results.sort((a, b) => a.display.localeCompare(b.display))
+    const max = firstBy(results, [(x) => x.display.length, "desc"])?.display.length
+    if (!max) return results
+    return results.map((item) => ({
+      ...item,
+      display: item.display.padEnd(max + 2),
+    }))
+  })
+
   const options = createMemo((prev: AutocompleteOption[] | undefined) => {
     const filesValue = files()
     const referenceMatchValue = referenceMatch()
@@ -542,6 +568,20 @@ export function Autocomplete(props: {
 
     if (store.visible === "@" && referenceMatchValue) {
       return referenceAliasesValue.filter((item) => item.display === `@${referenceMatchValue.name}`)
+    }
+
+    // Sub-completion: /skills: triggers skill-name autocomplete
+    if (store.visible === "/" && searchValue.startsWith("skills:")) {
+      const skillFilter = searchValue.slice("skills:".length)
+      const skills = skillOptions()
+      if (!skillFilter) return skills
+      return fuzzysort
+        .go(skillFilter, skills, {
+          keys: [(obj) => obj.value ?? obj.display.trimEnd(), "description" as const],
+          threshold: 0,
+          limit: 10,
+        })
+        .map((arr) => arr.obj)
     }
 
     // Files come from fff already fuzzy ranked and filtered
