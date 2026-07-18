@@ -48,6 +48,7 @@ import { DialogAlert } from "../../ui/dialog-alert"
 import { useToast } from "../../ui/toast"
 import { useKV } from "../../context/kv"
 import { createFadeIn } from "../../util/signal"
+import { DialogPromptHistory } from "../dialog-prompt-history"
 import { DialogSkill } from "../dialog-skill"
 import { DialogWorkspaceUnavailable } from "../dialog-workspace-unavailable"
 import { DialogBtw } from "../dialog-btw"
@@ -533,6 +534,26 @@ export function Prompt(props: PromptProps) {
         },
       },
       {
+        title: "Search prompt history",
+        name: "prompt.history.search",
+        category: "Prompt",
+        slashName: "history",
+        run: () => {
+          dialog.replace(() => (
+            <DialogPromptHistory
+              history={history.list()}
+              onSelect={(item) => {
+                input.setText(item.input)
+                setStore("prompt", item)
+                setStore("mode", item.mode ?? "normal")
+                restoreExtmarksFromParts(item.parts)
+                input.gotoBufferEnd()
+              }}
+            />
+          ))
+        },
+      },
+      {
         title: "Warp",
         desc: "Change the workspace for the session",
         name: "workspace.set",
@@ -573,6 +594,7 @@ export function Prompt(props: PromptProps) {
       "prompt.stash.pop",
       "prompt.stash.list",
       "prompt.skills",
+      "prompt.history.search",
       "session.interrupt",
       "workspace.set",
       "session.move",
